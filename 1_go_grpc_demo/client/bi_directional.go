@@ -25,6 +25,7 @@ func callSayHelloBiDirectional(client pb.GreetServiceClient, names *pb.NamesList
 	waitc := make(chan struct{})
 
 	// go routine
+	// processing the result
 	go func() {
 
 		for {
