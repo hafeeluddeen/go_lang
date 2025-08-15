@@ -6,7 +6,7 @@ import (
 )
 
 // 1.
-func unbuf() {
+func buff() {
 
 	// define the Buffered channel
 	myChannel := make(chan int, 3)
@@ -54,7 +54,9 @@ func infinite_routine() {
 
 // 3.
 
-func buff() {
+func unbuff() {
+
+	// since unbuffered channels are SYNC in nature, its like their size is 1
 	ch := make(chan int)
 
 	go func() {
@@ -78,10 +80,13 @@ func buff() {
 // DONE channel
 
 // this says the func accepts a chan of type bool
+// Also this syntax says the channel is read only
 func doWork(done <-chan bool) {
 
 	for {
 
+		// the "SELECT" here is extremely useful as it helps us to check if the parent wants to cancel the channel
+		// once command comes through we can cancel it
 		select {
 
 		// the moment we consume something from our channel we will wrap up our work
