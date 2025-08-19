@@ -38,9 +38,19 @@ func contextMain() {
 	infiniteCheerys := make(chan interface{})
 	go generator("Cherrys", infiniteCheerys)
 
-	wg.Add(1)
+	func2 := genericFunc
+	func3 := genericFunc
 
+	wg.Add(1)
 	go func1(ctx, &wg, infiniteApples)
+
+	wg.Add(1)
+	go func2(ctx, &wg, infiniteBananas)
+
+	wg.Add(1)
+	go func3(ctx, &wg, infiniteCheerys)
+
+	wg.Wait()
 
 }
 
@@ -58,7 +68,7 @@ func func1(ctx context.Context, parentWg *sync.WaitGroup, stream <-chan interfac
 			select {
 			case <-ctx.Done():
 				return
-			// ok is the language provoded variable if stream ends its set to False
+			// ok is the language provided variable if stream ends its set to False
 			case d, ok := <-stream:
 				if !ok {
 					fmt.Println("Channel CLosed")
@@ -70,7 +80,7 @@ func func1(ctx context.Context, parentWg *sync.WaitGroup, stream <-chan interfac
 		}
 	}
 
-	newCtx, cancel := context.WithTimeout(ctx, time.Second*5)
+	newCtx, cancel := context.WithTimeout(ctx, time.Second*3)
 
 	defer cancel()
 
@@ -81,4 +91,24 @@ func func1(ctx context.Context, parentWg *sync.WaitGroup, stream <-chan interfac
 
 	wg.Wait()
 
+}
+
+func genericFunc(ctx context.Context, wg *sync.WaitGroup, stream <-chan interface{}) {
+	defer wg.Done()
+
+	// it keeps on running until it receives a val from the channel
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case d, ok := <-stream:
+			if !ok {
+				fmt.Println("Channel CLosed")
+				return
+			}
+			fmt.Println(d)
+		}
+
+	}
 }
