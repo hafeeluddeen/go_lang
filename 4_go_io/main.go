@@ -99,7 +99,6 @@ func count(ptr io.Reader) (int, error) {
 }
 
 // writter
-
 func writer_main() {
 	/*
 
@@ -125,25 +124,14 @@ func writer_main() {
 	fmt.Printf("File written Successfullt no of bytes: %v \n", n)
 }
 
-// func file_writter(string s, w io.Writer) (int, error){
-// 	// create a byte array
-
-// 	n, err := w.Write([]byte(s))
-
-// 	if err != nil{
-// 		return 0,log.Fatalf("Failed to wrtie into the file")
-// 	}
-
-// }
-
 func file_writter(s string, w io.Writer) (int, error) {
 	// create a byte array
 
 	n, err := w.Write([]byte(s))
 
 	if err != nil {
-		// 		return 0,log.Fatalf("Failed to wrtie into the file")
 
+		// 		return 0,log.Fatalf("Failed to wrtie into the file")
 		return 0, fmt.Errorf("Failed to wrtie into the file")
 	}
 

@@ -1,0 +1,36 @@
+version: "3"
+
+# The build context is the set of files that your build can access -> Here " . " meaning this build can access all the files here
+
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: postgres-dockerfile
+    
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    
+    volumes:
+      - ./data:var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: scheduler-dockerfile
+    
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    
+    ports:
+      - "8081:8081"
+    
+    depends_on:
+      - postgres

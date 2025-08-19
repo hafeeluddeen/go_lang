@@ -7,6 +7,9 @@ func worker_pool_main() {
 	jobs := make(chan int, 20)
 	results := make(chan int, 20)
 
+	// worker pools -> We can't gurantee the results will be in order but will be faster for sure.
+	go worker(jobs, results)
+	go worker(jobs, results)
 	go worker(jobs, results)
 
 	// fill in the job

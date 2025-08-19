@@ -1,0 +1,17 @@
+# Creating a PG Container
+
+FROM postgres:16.1
+
+WORKDIR /app
+
+# copying sql init files.
+
+# Some official database images (like postgres, mysql, mariadb) have special behavior:
+
+# On first container startup, the entrypoint script looks inside /docker-entrypoint-initdb.d/ for any .sql, .sql.gz, or .sh files.
+
+# It executes them automatically to set up the initial database.
+
+# So if you COPY your SQL script there in the Dockerfile, it gets run when the container starts for the very first time.
+
+COPY pkg/db/setup.sql  /docker-entrypoint-initdb.d/
