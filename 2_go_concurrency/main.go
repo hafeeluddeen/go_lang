@@ -302,3 +302,10 @@ func main() {
 // func main() {
 // 	worker_pool_main()
 // }
+
+// ---------------------------
+
+func main() {
+
+	contextMain()
+}
