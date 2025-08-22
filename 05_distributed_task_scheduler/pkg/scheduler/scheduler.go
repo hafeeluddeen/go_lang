@@ -53,4 +53,25 @@ func (s *SchedulerServer) Start() error{
 	if err != nil{
 		return err
 	}
+
+	// grey are for me right now
+	http.HandleFunc("/schedule", s.handleScheduleTask)
+	http.HandleFunc("/status/", s.handleGetTaskStatus )
+
+	// grey are for me
+	s.httpServer = &http.Server{
+		Addr: s.serverPort,
+	}
+
+	log.PrintF("Starting the Scheduler Server on Port: %v\n",s.serverPort)
+
+
+	/// start the scheduler server in a seperate goroutine......
+	// ErrServerClosed means server was closed gracefully meaning it was stopped by us not due to some error.
+	go func(){
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error %s\n", err)
+		}
+		
+	}()
 }
