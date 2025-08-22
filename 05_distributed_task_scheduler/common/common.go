@@ -14,6 +14,7 @@ func ConnectToDatabase(ctx context.Context, dbConnectionString string) (*pgxpool
 
 	retryCount := 0
 
+	// retry mechanism for DB
 	for retryCount < 5 {
 
 		dbPool, err := pgxpool.Connect(ctx, dbConnectionString)
