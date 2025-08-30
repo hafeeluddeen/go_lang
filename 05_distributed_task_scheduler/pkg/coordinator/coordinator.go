@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -195,49 +198,11 @@ func (s *CoordinatorServer) manageWorkerPool() {
 
 }
 
-func (s *CoordinatorServer) removeInactiveWorkers() {
-	/*
-		We accquire lock on the worker pool because we might be making some changes on the worker pool
-		[ removing few workers if they are inactive ]
-
-	*/
-
-	s.WorkerPoolMutex.Lock()
-	defer s.WorkerPoolMutex.Unlock()
-
-	for workerId, worker := range s.WorkerPool {
-		if worker.heartbeatMisses > s.maxHeartbeatMisses {
-			log.Printf("Removing Inactive worker....: %d\n", workerId)
-			worker.grpcConnection.Close()
-			delete(s.WorkerPool, workerId)
-
-			/*
-				accquire lock on woker pool keys mutex
-				because we are going to make changes to the worker pool keys cause we had removed a worker
-			*/
-
-			s.WorkerPoolKeysMutex.Lock()
-
-			workerCount := len(s.WorkerPool)
-			s.WorkerPoolKeys = make([]uint32, 0, workerCount)
-
-			for k := range s.WorkerPool {
-				s.WorkerPoolKeys = append(s.WorkerPoolKeys, k)
-			}
-
-			s.WorkerPoolKeysMutex.Unlock()
-		} else {
-			worker.heartbeatMisses++
-		}
-	}
-
-}
-
 // HEARTBEAT REALTED FUNCTIONS --> ENDS
 
 // TASK EXECUTION RELATED FUNCTIONS --> STARTS
 
-func (s *CoordinatorServer) scanDB() {
+func (s *CoordinatorServer) scanDatabase() {
 	ticker := time.Ticker(scanInterval)
 
 	// scanning the DB at regular intervals of time so see if we can get any tasks that needs to be executed
@@ -328,6 +293,59 @@ func (s *CoordinatorServer) executeAllScheduledTasks() {
 	}
 }
 
+func (s *CoordinatorServer) SubmitTask(ctx context.Context, in *pb.ClientTaskRequest) (*pb.ClientTaskResponse, error) {
+	data := in.GetData()
+	taskId := uuid.New().String()
+	task := &pb.TaskRequest{
+		TaskId: taskId,
+		Data:   data,
+	}
+
+	if err := s.submitTaskToWorker(task); err != nil {
+		return nil, err
+	}
+
+	return &pb.ClientTaskResponse{
+		Message: "Task submitted successfully",
+		TaskId:  taskId,
+	}, nil
+}
+
+func (s *CoordinatorServer) UpdateTaskStatus(ctx context.Context, req *pb.UpdateTaskStatusRequest) (*pb.UpdateTaskStatusResponse, error) {
+	status := req.GetStatus()
+	taskId := req.GetTaskId()
+	var timestamp time.Time
+	var column string
+
+	switch status {
+	case pb.TaskStatus_STARTED:
+		timestamp = time.Unix(req.GetStartedAt(), 0)
+		column = "started_at"
+	case pb.TaskStatus_COMPLETE:
+		timestamp = time.Unix(req.GetCompletedAt(), 0)
+		column = "completed_at"
+	case pb.TaskStatus_FAILED:
+		timestamp = time.Unix(req.GetFailedAt(), 0)
+		column = "failed_at"
+	default:
+		log.Println("Invalid Status in UpdateStatusRequest")
+		return nil, errors.ErrUnsupported
+	}
+
+	sqlStatement := fmt.Sprintf("UPDATE tasks SET %s = $1 WHERE id = $2", column)
+	_, err := s.dbPool.Exec(ctx, sqlStatement, timestamp, taskId)
+	if err != nil {
+		log.Printf("Could not update task status for task %s: %+v", taskId, err)
+		return nil, err
+	}
+
+	return &pb.UpdateTaskStatusResponse{Success: true}, nil
+}
+
+// TASK EXECUTION RELATED FUNCTIONS --> ENDS
+
+// worker - starts
+
 func (s *CoordinatorServer) getNextWorker() *workerInfo {
 
 	// accquire read lock on the worker pool keys
@@ -361,4 +379,100 @@ func (s *CoordinatorServer) submitTaskToWorker(task *pb.TaskRequest) error {
 	return err
 }
 
-// TASK EXECUTION RELATED FUNCTIONS --> ENDS
+func (s *CoordinatorServer) removeInactiveWorkers() {
+	/*
+		We accquire lock on the worker pool because we might be making some changes on the worker pool
+		[ removing few workers if they are inactive ]
+
+	*/
+
+	s.WorkerPoolMutex.Lock()
+	defer s.WorkerPoolMutex.Unlock()
+
+	for workerId, worker := range s.WorkerPool {
+		if worker.heartbeatMisses > s.maxHeartbeatMisses {
+			log.Printf("Removing Inactive worker....: %d\n", workerId)
+			worker.grpcConnection.Close()
+			delete(s.WorkerPool, workerId)
+
+			/*
+				accquire lock on woker pool keys mutex
+				because we are going to make changes to the worker pool keys cause we had removed a worker
+			*/
+
+			s.WorkerPoolKeysMutex.Lock()
+
+			workerCount := len(s.WorkerPool)
+			s.WorkerPoolKeys = make([]uint32, 0, workerCount)
+
+			for k := range s.WorkerPool {
+				s.WorkerPoolKeys = append(s.WorkerPoolKeys, k)
+			}
+
+			s.WorkerPoolKeysMutex.Unlock()
+		} else {
+			worker.heartbeatMisses++
+		}
+	}
+
+}
+
+// worker - ends
+
+// GRPC Server - STARTS
+func (s *CoordinatorServer) startGRPCServer() error {
+	var err error
+	s.listener, err = net.Listen("tcp", s.serverPort)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Starting gRPC server on %s\n", s.serverPort)
+	s.grpcServer = grpc.NewServer()
+	pb.RegisterCoordinatorServiceServer(s.grpcServer, s)
+
+	go func() {
+		if err := s.grpcServer.Serve(s.listener); err != nil {
+			log.Fatalf("gRPC server failed: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+func (s *CoordinatorServer) awaitShutdown() error {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	return s.Stop()
+}
+
+// Stop gracefully shuts down the server.
+func (s *CoordinatorServer) Stop() error {
+	// Signal all goroutines to stop
+	s.cancel()
+	// Wait for all goroutines to finish
+	s.wg.Wait()
+
+	s.WorkerPoolMutex.Lock()
+	defer s.WorkerPoolMutex.Unlock()
+	for _, worker := range s.WorkerPool {
+		if worker.grpcConnection != nil {
+			worker.grpcConnection.Close()
+		}
+	}
+
+	if s.grpcServer != nil {
+		s.grpcServer.GracefulStop()
+	}
+
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+
+	s.dbPool.Close()
+	return nil
+}
+
+// GRPC Server - ENDS

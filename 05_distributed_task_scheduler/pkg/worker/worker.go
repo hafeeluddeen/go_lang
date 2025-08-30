@@ -279,6 +279,23 @@ func (w *WorkerServer) worker() {
 
 }
 
+// SubmitTask handles the submission of a task to the worker server.
+func (w *WorkerServer) SubmitTask(ctx context.Context, req *pb.TaskRequest) (*pb.TaskResponse, error) {
+	log.Printf("Received task: %+v", req)
+
+	w.ReceivedTasksMutex.Lock()
+	w.ReceivedTasks[req.GetTaskId()] = req
+	w.ReceivedTasksMutex.Unlock()
+
+	w.taskQueue <- req
+
+	return &pb.TaskResponse{
+		Message: "Task was submitted",
+		Success: true,
+		TaskId:  req.TaskId,
+	}, nil
+}
+
 // updateTaskStatus updates the status of a task.
 func (w *WorkerServer) updateTaskStatus(task *pb.TaskRequest, status pb.TaskStatus) {
 	w.coordinatorServiceClient.UpdateTaskStatus(context.Background(), &pb.UpdateTaskStatusRequest{

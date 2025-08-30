@@ -339,7 +339,6 @@ func (s *SchedulerServer ) awaitShutdown error {
 }
 
 
-
 func (s *SchedulerServer) Stop() error {
 
 	// once the stop method is called -> we need to close the connection
